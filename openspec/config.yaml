@@ -1,0 +1,8 @@
+schema: openspec/v1
+project: foundation-dev.site
+description: >
+  KISS agent-first fullstack starter. Specs and changes live in this single
+  OpenSpec root for both frontend and backend.
+paths:
+  specs: specs
+  changes: changes
