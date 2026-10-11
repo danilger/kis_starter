@@ -20,7 +20,7 @@ src/server/modules/<name>/
 ├── contract/
 │   ├── schema.ts      # Zod bodies / entities / shared response shapes
 │   └── endpoints.ts   # RouteContract per endpoint (input + responses)
-├── <name>.routes.ts   # implement(contract, handler)
+├── <name>.routes.ts   # implement / implementAuth(contract, handler)
 ├── <name>.service.ts  # optional — business logic
 ├── <name>.table.ts    # optional — Drizzle tables
 └── index.ts           # public module API (only for cross-module exports)
@@ -45,18 +45,20 @@ Do **not** add `contract/index.ts` re-exports.
 
 For every HTTP endpoint:
 
-1. Add/adjust Zod schemas in `contract/schema.ts`.
+1. Add/adjust Zod schemas in `contract/schema.ts` **only when the human/reviewer has approved the contract change** (see ownership below).
 2. Declare the route contract in `contract/endpoints.ts`:
    - `input` — request (`json` / `query` / `param`)
    - `responses` — map of HTTP status → Zod schema
-3. Implement the handler in `*.routes.ts` with `implement(contract, handler)`.
+3. Implement the handler in `*.routes.ts`:
+   - ordinary endpoints → `implement(contract, handler)`
+   - mutating auth endpoints (register/login/refresh/logout) → `implementAuth(contract, handler)`
 4. Handler returns `{ status, body }` only for statuses listed in the contract.
-5. Do **not** call raw `c.json()` for contract responses — `implement` validates against the contract.
+5. Do **not** call raw `c.json()` for contract responses — `implement` / `implementAuth` validates against the contract.
 6. Declare every runtime status in `responses` (include `400` when there is request input, and `500` for response-validation failures).
 
 Helper: [src/server/lib/contract.ts](./src/server/lib/contract.ts)
 
-Human/reviewer owns `contract/`. Agent fills in service + `implement(...)` to satisfy it.
+**Contract ownership:** Human/reviewer owns `contract/`. The agent may *propose* contract changes, but must **not** edit an agreed contract on its own to make tests or types pass — fix the implementation instead. Agent fills in service + `implement` / `implementAuth` to satisfy the contract.
 
 ### Auth session rules
 

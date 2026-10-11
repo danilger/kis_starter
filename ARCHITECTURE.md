@@ -1,18 +1,26 @@
 # Architecture Specification
 
-## KISS Agent-First Fullstack Starter
+## KISS Agent-First Fullstack Starter (`kis_starter`)
 
-**Status:** Architecture decisions approved
-**Target:** Cursor IDE / AI Coding Agents
-**Existing repository:** `danilger/ddd_strong_contract_agent_loop_starter`
+**Status:** Architecture decisions approved  
+**Target:** Cursor IDE / AI Coding Agents  
+**Repository:** [danilger/kis_starter](https://github.com/danilger/kis_starter)
+
+### Lineage
+
+This project is the **successor** to [danilger/ddd_strong_contract_agent_loop_starter](https://github.com/danilger/ddd_strong_contract_agent_loop_starter).
+
+The predecessor kept strong Zod contracts and an agent-oriented workflow, but accumulated DDD/CQRS-style layers, DI, and ceremony that inflated diffs, slowed human review, and burned context tokens on cheap coding models.
+
+**Goal of the successor:** keep the useful parts (contract-first API, vertical slices, quality gates) and **drop excess complexity** so review stays cheap and agents spend tokens on the feature, not on framework scaffolding.
 
 ---
 
 # 1. Цель проекта
 
-Переработать существующий стартер в минималистичную, надёжную и масштабируемую основу для разработки fullstack-приложений с использованием AI coding agents.
+Дать минималистичную, надёжную основу для fullstack-приложений с AI coding agents — без обязательного DDD/DI/CQRS из предыдущего стартера.
 
-Стартер должен подходить как для небольших CRUD-приложений, так и для сложных SaaS-продуктов.
+Стартер должен подходить как для небольших CRUD-приложений, так и для постепенного роста до более сложных продуктов (progressive architecture).
 
 Основной сценарий разработки:
 
@@ -20,7 +28,7 @@
 * AI-агенты реализуют большую часть кода.
 * Используются относительно недорогие coding-модели уровня DeepSeek Flash или Cursor Composer.
 * Качество обеспечивается простотой архитектуры, строгими контрактами и автоматическими проверками.
-* Человек должен иметь возможность быстро понимать и ревьюить результат.
+* Человек должен иметь возможность быстро понимать и ревьюить результат — меньше слоёв → меньше токенов и быстрее ревью.
 
 ## 1.1. Главный принцип
 
@@ -815,17 +823,32 @@ LLM-review не заменяет детерминированные провер
 
 ---
 
-# 13. Миграция существующего проекта
+# 13. Наследие и отказ от сложности предшественника
 
-Исходный репозиторий:
+**Предшественник:** [danilger/ddd_strong_contract_agent_loop_starter](https://github.com/danilger/ddd_strong_contract_agent_loop_starter)  
+**Приёмник (этот проект):** [danilger/kis_starter](https://github.com/danilger/kis_starter)
 
-`danilger/ddd_strong_contract_agent_loop_starter`
+Миграция с предшественника — **целевое состояние**, а не открытый план «с нуля». Ниже — что сознательно отбросили и что сохранили, чтобы ревью оставалось простым, а контекст агента — коротким.
 
-Необходимо переработать существующую архитектуру.
+## 13.1. Сохранено
 
-## Этап 1. Анализ
+* Contract-first Zod API (request + response).
+* Vertical slices / modular monolith.
+* Agent-oriented docs (`AGENTS.md`) + quality gates.
+* Bun + Hono + Drizzle + React/Vite fullstack shape.
 
-Изучить текущие:
+## 13.2. Отброшено по умолчанию
+
+* Обязательные DDD-слои, CQRS, CommandBus, repository interfaces.
+* DI-контейнеры и Base* классы.
+* Лишние ceremony-файлы «на вырост».
+* Дублирование длинных архитектурных инструкций в каждом модуле.
+
+Критерий отказа: абстракция не окупает стоимость ревью и токенов на типичном CRUD/feature-цикле с недорогой моделью.
+
+## 13.3. Исторический чеклист миграции (reference)
+
+Если снова сравнивать с предшественником, смотреть:
 
 * Dependencies.
 * Backend architecture.
@@ -836,26 +859,20 @@ LLM-review не заменяет детерминированные провер
 * Tests.
 * Quality gates.
 
-Определить, какие компоненты можно удалить, а какие необходимо перенести.
-
-## Этап 2. Технические решения
-
-Проверить:
+Технические проверки, которые уже заложены в приёмнике:
 
 1. Совместимость Bun с выбранными библиотеками.
 2. Hono + Zod request validation.
 3. Hono + Zod runtime response validation.
 4. End-to-end TypeScript inference.
 5. Типизацию ошибок и HTTP-статусов.
-6. Подходящие инструменты для архитектурного linting.
+6. Архитектурный lint (`eslint-plugin-boundaries`, `import/no-cycle`).
 7. Сборку React + Vite в едином проекте.
 8. Работу Drizzle и миграций.
 
 Не реализовывать собственные решения, пока не исследованы существующие библиотеки.
 
-## Этап 3. План миграции
-
-Подготовить конкретный план:
+При дальнейших упрощениях фиксировать:
 
 * Какие зависимости удалить.
 * Какие зависимости добавить.
@@ -866,27 +883,13 @@ LLM-review не заменяет детерминированные провер
 * Как перенести тесты.
 * Как настроить quality gates.
 
-## Этап 4. Реализация
-
-После согласования плана выполнить миграцию.
-
-Не переписывать всё одновременно без промежуточных проверок.
-
-Сохранять существующую функциональность Auth:
-
-* Registration.
-* Login.
-* Refresh.
-* Logout.
-* Get current user.
-
-Не упрощать архитектуру за счёт удаления необходимой функциональности или ослабления безопасности.
+Не упрощать архитектуру за счёт удаления необходимой функциональности или ослабления безопасности Auth (register / login / refresh / logout / me).
 
 ---
 
 # 14. Критерии готовности
 
-Новый стартер считается готовым, когда:
+`kis_starter` считается готовым, когда:
 
 1. Backend работает на Bun + Hono.
 2. Frontend работает на React + Vite.
@@ -931,24 +934,11 @@ LLM-review не заменяет детерминированные провер
 
 # 16. Инструкция для Cursor
 
-Используй этот документ как целевую архитектурную спецификацию.
+Используй этот документ как целевую архитектурную спецификацию **приёмника** `kis_starter`.
 
-Твоя задача: помочь переработать существующий стартер, а не создать новый сложный архитектурный фреймворк.
+Предшественник [ddd_strong_contract_agent_loop_starter](https://github.com/danilger/ddd_strong_contract_agent_loop_starter) — источник контрактных идей, не шаблон слоёв. Не возвращай DDD/CQRS/DI «потому что так было там».
 
-**На первом шаге не изменяй код.**
-
-Сначала:
-
-1. Проанализируй существующий репозиторий.
-2. Сопоставь его с целевой архитектурой.
-3. Выдели компоненты, которые нужно удалить.
-4. Выдели компоненты, которые нужно сохранить.
-5. Исследуй библиотеки для строгих API-контрактов.
-6. Проверь возможность автоматической runtime-валидации response.
-7. Предложи минимальную конфигурацию линтера для изоляции модулей.
-8. Подготовь поэтапный план миграции.
-
-При наличии нескольких решений выбирай то, которое обеспечивает необходимые гарантии с наименьшей общей сложностью.
+При наличии нескольких решений выбирай то, которое обеспечивает необходимые гарантии с наименьшей общей сложностью (дешевле ревью и токены).
 
 Не добавляй новые архитектурные слои без согласования.
 
