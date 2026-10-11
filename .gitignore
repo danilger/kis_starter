@@ -7,3 +7,4 @@ data/*.db-*
 .DS_Store
 drizzle/meta/
 .cursor/
+personal_site_concept_tz.md
