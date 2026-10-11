@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
-import { db } from "../../db";
+import { db, type DbExecutor } from "../../db";
 import { refreshTokens, users } from "./auth.table";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { createRefreshToken, signAccessToken, verifyAccessToken } from "../../lib/tokens";
@@ -44,12 +44,12 @@ function isUniqueViolation(error: unknown): boolean {
 
 async function issueSession(
   user: { id: string; email: string; createdAt: Date },
-  tx: typeof db = db,
+  executor: DbExecutor = db,
 ): Promise<IssuedSession> {
   const accessToken = await signAccessToken({ sub: user.id, email: user.email });
   const refresh = createRefreshToken();
 
-  await tx.insert(refreshTokens).values({
+  await executor.insert(refreshTokens).values({
     id: randomUUID(),
     userId: user.id,
     tokenHash: hashRefreshToken(refresh.token),
@@ -81,15 +81,16 @@ export async function register(input: RegisterBody): Promise<IssuedSession> {
   };
 
   try {
-    await db.insert(users).values(user);
+    return await db.transaction(async (tx) => {
+      await tx.insert(users).values(user);
+      return issueSession(user, tx);
+    });
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new AuthError("Email already registered", "EMAIL_TAKEN", 409);
     }
     throw error;
   }
-
-  return issueSession(user);
 }
 
 export async function login(input: LoginBody): Promise<IssuedSession> {
@@ -136,7 +137,7 @@ export async function refresh(refreshToken: string): Promise<IssuedSession> {
       throw new AuthError("User not found", "USER_NOT_FOUND", 401);
     }
 
-    return issueSession(user, tx as unknown as typeof db);
+    return issueSession(user, tx);
   });
 }
 

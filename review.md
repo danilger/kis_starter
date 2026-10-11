@@ -139,9 +139,10 @@ src/
 | [contract/endpoints.ts](src/server/modules/auth/contract/endpoints.ts) | Явные контракты endpoint’ов |
 | [auth.table.ts](src/server/modules/auth/auth.table.ts) | Таблицы `users`, `refresh_tokens` |
 | [auth.cookies.ts](src/server/modules/auth/auth.cookies.ts) | HttpOnly refresh cookie helpers |
-| [auth.csrf.ts](src/server/modules/auth/auth.csrf.ts) | Origin/Referer allowlist для mutating auth |
-| [auth.service.ts](src/server/modules/auth/auth.service.ts) | Бизнес-логика + атомарная refresh rotation |
-| [auth.routes.ts](src/server/modules/auth/auth.routes.ts) | `implement(contract, …)` + Set-Cookie |
+| [auth.csrf.ts](src/server/modules/auth/auth.csrf.ts) | Origin/Referer allowlist helpers |
+| [auth.implement.ts](src/server/modules/auth/auth.implement.ts) | `implementAuth` — CSRF → contract `403` |
+| [auth.service.ts](src/server/modules/auth/auth.service.ts) | Бизнес-логика + атомарные register/refresh |
+| [auth.routes.ts](src/server/modules/auth/auth.routes.ts) | `implementAuth` / `implement` + Set-Cookie |
 
 Эндпоинты:
 
@@ -225,8 +226,8 @@ Browser  LoginPage
    → AuthForm / AuthProvider.login
    → api.api.auth.login.$post (credentials include)
    → Vite proxy /api → Bun :8787
-   → CSRF Origin check
-   → implement(loginContract)
+   → implementAuth(loginContract)  // CSRF 403 в контракте
+
    → auth.service.login
    → Set-Cookie refresh + JSON { accessToken, user }
    → setAccessToken (memory) + setUser

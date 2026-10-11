@@ -14,6 +14,7 @@ export const registerContract = {
   responses: {
     201: authSessionSchema,
     400: errorBodySchema,
+    403: errorBodySchema,
     409: errorBodySchema,
     500: errorBodySchema,
   },
@@ -22,6 +23,7 @@ export const registerContract = {
   {
     201: typeof authSessionSchema;
     400: typeof errorBodySchema;
+    403: typeof errorBodySchema;
     409: typeof errorBodySchema;
     500: typeof errorBodySchema;
   }
@@ -33,6 +35,7 @@ export const loginContract = {
     200: authSessionSchema,
     400: errorBodySchema,
     401: errorBodySchema,
+    403: errorBodySchema,
     500: errorBodySchema,
   },
 } as const satisfies RouteContract<
@@ -41,6 +44,7 @@ export const loginContract = {
     200: typeof authSessionSchema;
     400: typeof errorBodySchema;
     401: typeof errorBodySchema;
+    403: typeof errorBodySchema;
     500: typeof errorBodySchema;
   }
 >;
@@ -49,6 +53,7 @@ export const refreshContract = {
   responses: {
     200: authSessionSchema,
     401: errorBodySchema,
+    403: errorBodySchema,
     500: errorBodySchema,
   },
 } as const satisfies RouteContract<
@@ -56,6 +61,7 @@ export const refreshContract = {
   {
     200: typeof authSessionSchema;
     401: typeof errorBodySchema;
+    403: typeof errorBodySchema;
     500: typeof errorBodySchema;
   }
 >;
@@ -63,12 +69,14 @@ export const refreshContract = {
 export const logoutContract = {
   responses: {
     200: logoutOkSchema,
+    403: errorBodySchema,
     500: errorBodySchema,
   },
 } as const satisfies RouteContract<
   Record<string, never>,
   {
     200: typeof logoutOkSchema;
+    403: typeof errorBodySchema;
     500: typeof errorBodySchema;
   }
 >;

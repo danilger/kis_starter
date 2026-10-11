@@ -8,3 +8,4 @@ data/*.db-*
 drizzle/meta/
 .cursor/
 personal_site_concept_tz.md
+src/server/modules/_cycle_fixture/

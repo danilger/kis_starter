@@ -52,7 +52,8 @@ type ContractTypedResponse<TResponses extends Partial<Record<ContentfulStatusCod
     : never;
 }[keyof TResponses];
 
-function respondDeclared<TResponses extends Partial<Record<ContentfulStatusCode, z.ZodType>>>(
+/** Validate and send a response for a status declared on the contract. */
+export function respondDeclared<TResponses extends Partial<Record<ContentfulStatusCode, z.ZodType>>>(
   c: Context,
   contract: RouteContract<InputDef, TResponses>,
   status: ContentfulStatusCode,

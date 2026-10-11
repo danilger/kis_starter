@@ -10,7 +10,7 @@ import {
 import * as authService from "./auth.service";
 import { AuthError } from "./auth.service";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "./auth.cookies";
-import { authCsrfGuard } from "./auth.csrf";
+import { implementAuth } from "./auth.implement";
 
 function getBearerToken(authorization: string | undefined): string | null {
   if (!authorization?.startsWith("Bearer ")) {
@@ -28,10 +28,9 @@ function toSessionBody(session: authService.IssuedSession) {
 }
 
 export const authRoutes = new Hono()
-  .use("/auth/*", authCsrfGuard)
   .post(
     "/auth/register",
-    implement(registerContract, async ({ c, json }) => {
+    implementAuth(registerContract, async ({ c, json }) => {
       try {
         const session = await authService.register(json);
         setRefreshCookie(c, session.refreshToken);
@@ -49,7 +48,7 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/login",
-    implement(loginContract, async ({ c, json }) => {
+    implementAuth(loginContract, async ({ c, json }) => {
       try {
         const session = await authService.login(json);
         setRefreshCookie(c, session.refreshToken);
@@ -67,7 +66,7 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/refresh",
-    implement(refreshContract, async ({ c }) => {
+    implementAuth(refreshContract, async ({ c }) => {
       const refreshToken = readRefreshCookie(c);
       if (!refreshToken) {
         return {
@@ -93,7 +92,7 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/logout",
-    implement(logoutContract, async ({ c }) => {
+    implementAuth(logoutContract, async ({ c }) => {
       const refreshToken = readRefreshCookie(c);
       if (refreshToken) {
         await authService.logout(refreshToken);

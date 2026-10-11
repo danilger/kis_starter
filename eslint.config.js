@@ -41,6 +41,9 @@ export default tseslint.config(
         { type: "client-shared", pattern: "src/client/shared/*", mode: "folder" },
         { type: "client-entry", pattern: "src/client/main.tsx", mode: "file" },
       ],
+      "import/parsers": {
+        "@typescript-eslint/parser": [".ts", ".tsx"],
+      },
       "import/resolver": {
         typescript: {
           alwaysTryTypes: true,
@@ -48,6 +51,13 @@ export default tseslint.config(
           noWarnOnMultipleProjects: true,
         },
         node: true,
+      },
+    },
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
       },
     },
     rules: {
@@ -100,7 +110,7 @@ export default tseslint.config(
           ],
         },
       ],
-      "import/no-cycle": ["error", { maxDepth: 10 }],
+      "import/no-cycle": "error",
       ...reactHooks.configs.recommended.rules,
     },
   },

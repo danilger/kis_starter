@@ -62,8 +62,14 @@ Human/reviewer owns `contract/`. Agent fills in service + `implement(...)` to sa
 
 - Access JWT: client memory only (never `localStorage`).
 - Refresh token: `HttpOnly` cookie (`Path=/api/auth`), not in JSON.
-- Refresh rotation must be a single DB transaction.
+- Refresh rotation and register+session must use a DB transaction.
+- Mutating auth routes use `implementAuth` (CSRF Origin/Referer → contract `403 CSRF_REJECTED`).
 - Cross-module imports: only via the target module’s `index.ts` (enforced by ESLint `boundaries/entry-point`).
+
+### Contract guarantee scope
+
+Runtime Zod contracts apply to handlers going through `implement` / `implementAuth`.
+They do **not** automatically cover global Hono `onError` / `notFound` responses.
 
 ## Layout
 

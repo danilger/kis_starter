@@ -28,13 +28,24 @@ describe("auth contracts", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  test("csrf rejects mutating auth without origin", async () => {
+  test("csrf rejects mutating auth without origin via contract 403", async () => {
+    const { loginContract, registerContract, refreshContract, logoutContract } = await import(
+      "../src/server/modules/auth/contract/endpoints"
+    );
+    expect(loginContract.responses[403]).toBeDefined();
+    expect(registerContract.responses[403]).toBeDefined();
+    expect(refreshContract.responses[403]).toBeDefined();
+    expect(logoutContract.responses[403]).toBeDefined();
+
     const res = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: "a@example.com", password: "password123" }),
     });
     expect(res.status).toBe(403);
+    const body = (await res.json()) as { code?: string; error?: string };
+    expect(body.code).toBe("CSRF_REJECTED");
+    expect(body.error).toBe("CSRF validation failed");
   });
 
   test("valid register then me refresh logout flow uses HttpOnly cookie", async () => {
