@@ -3,6 +3,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import boundaries from "eslint-plugin-boundaries";
 import reactHooks from "eslint-plugin-react-hooks";
+import importPlugin from "eslint-plugin-import";
 
 export default tseslint.config(
   {
@@ -14,6 +15,7 @@ export default tseslint.config(
     files: ["src/**/*.{ts,tsx}", "tests/**/*.ts"],
     plugins: {
       boundaries,
+      import: importPlugin,
       "react-hooks": reactHooks,
     },
     settings: {
@@ -39,20 +41,49 @@ export default tseslint.config(
         { type: "client-shared", pattern: "src/client/shared/*", mode: "folder" },
         { type: "client-entry", pattern: "src/client/main.tsx", mode: "file" },
       ],
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+          project: ["./tsconfig.server.json", "./tsconfig.client.json"],
+          noWarnOnMultipleProjects: true,
+        },
+        node: true,
+      },
     },
     rules: {
       "boundaries/no-unknown": "off",
       "boundaries/no-unknown-files": "off",
+      "boundaries/entry-point": [
+        "error",
+        {
+          default: "disallow",
+          rules: [
+            {
+              target: ["server-module"],
+              allow: "index.ts",
+              message: "Import other modules only through their public index.ts",
+            },
+            {
+              target: [
+                "server-lib",
+                "server-db",
+                "server-app",
+                "client-app",
+                "client-pages",
+                "client-features",
+                "client-shared",
+                "client-entry",
+              ],
+              allow: "*",
+            },
+          ],
+        },
+      ],
       "boundaries/element-types": [
         "error",
         {
           default: "allow",
           rules: [
-            {
-              from: ["server-module"],
-              disallow: [["server-module", { module: "!${from.module}" }]],
-              message: "Import other modules only through their public index.ts",
-            },
             {
               from: ["client-shared"],
               disallow: ["client-features", "client-pages", "client-app"],
@@ -69,6 +100,7 @@ export default tseslint.config(
           ],
         },
       ],
+      "import/no-cycle": ["error", { maxDepth: 10 }],
       ...reactHooks.configs.recommended.rules,
     },
   },

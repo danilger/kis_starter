@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { db } from "../src/server/db";
 import { refreshTokens, users } from "../src/server/modules/auth/auth.table";
-import { AuthError, login, register } from "../src/server/modules/auth/auth.service";
+import { AuthError, login, refresh, register } from "../src/server/modules/auth/auth.service";
 
 beforeAll(() => {
   migrate(db, { migrationsFolder: "./src/server/db/migrations" });
@@ -15,7 +15,7 @@ beforeEach(async () => {
 });
 
 describe("auth.service", () => {
-  test("register and login return token pair", async () => {
+  test("register and login return session with refresh for cookie layer", async () => {
     const registered = await register({
       email: "alice@example.com",
       password: "password123",
@@ -31,6 +31,25 @@ describe("auth.service", () => {
     });
 
     expect(loggedIn.user.id).toBe(registered.user.id);
+  });
+
+  test("refresh rotation invalidates previous token", async () => {
+    const registered = await register({
+      email: "rotate@example.com",
+      password: "password123",
+    });
+
+    const next = await refresh(registered.refreshToken);
+    expect(next.accessToken.length).toBeGreaterThan(10);
+    expect(next.refreshToken).not.toBe(registered.refreshToken);
+
+    try {
+      await refresh(registered.refreshToken);
+      throw new Error("expected AuthError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AuthError);
+      expect((error as AuthError).code).toBe("INVALID_REFRESH");
+    }
   });
 
   test("duplicate email is rejected", async () => {

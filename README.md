@@ -25,6 +25,8 @@ bun run dev
 - API: `http://localhost:8787/api` (default; override with `PORT`)
 - Client: `http://localhost:5173` (proxies `/api` to the server)
 
+Auth: access JWT is kept in memory on the client; refresh token is an `HttpOnly` cookie (`credentials: "include"`). Mutating auth routes check `Origin`/`Referer` against `CORS_ORIGIN`.
+
 ## Quality gates
 
 ```bash
@@ -38,8 +40,8 @@ bun run build
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/auth/register` | Create account |
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/refresh` | Refresh tokens |
-| POST | `/api/auth/logout` | Invalidate refresh token |
-| GET | `/api/auth/me` | Current user (Bearer access token) |
+| POST | `/api/auth/register` | Create account; sets refresh cookie |
+| POST | `/api/auth/login` | Login; sets refresh cookie |
+| POST | `/api/auth/refresh` | Rotate refresh cookie; return new access JWT |
+| POST | `/api/auth/logout` | Clear refresh cookie / revoke token |
+| GET | `/api/auth/me` | Current user (`Authorization: Bearer` access token) |

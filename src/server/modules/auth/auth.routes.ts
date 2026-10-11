@@ -9,6 +9,8 @@ import {
 } from "./contract/endpoints";
 import * as authService from "./auth.service";
 import { AuthError } from "./auth.service";
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "./auth.cookies";
+import { authCsrfGuard } from "./auth.csrf";
 
 function getBearerToken(authorization: string | undefined): string | null {
   if (!authorization?.startsWith("Bearer ")) {
@@ -18,13 +20,22 @@ function getBearerToken(authorization: string | undefined): string | null {
   return token.length > 0 ? token : null;
 }
 
+function toSessionBody(session: authService.IssuedSession) {
+  return {
+    accessToken: session.accessToken,
+    user: session.user,
+  };
+}
+
 export const authRoutes = new Hono()
+  .use("/auth/*", authCsrfGuard)
   .post(
     "/auth/register",
-    implement(registerContract, async ({ json }) => {
+    implement(registerContract, async ({ c, json }) => {
       try {
-        const tokens = await authService.register(json);
-        return { status: 201 as const, body: tokens };
+        const session = await authService.register(json);
+        setRefreshCookie(c, session.refreshToken);
+        return { status: 201 as const, body: toSessionBody(session) };
       } catch (error) {
         if (error instanceof AuthError && error.status === 409) {
           return {
@@ -38,10 +49,11 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/login",
-    implement(loginContract, async ({ json }) => {
+    implement(loginContract, async ({ c, json }) => {
       try {
-        const tokens = await authService.login(json);
-        return { status: 200 as const, body: tokens };
+        const session = await authService.login(json);
+        setRefreshCookie(c, session.refreshToken);
+        return { status: 200 as const, body: toSessionBody(session) };
       } catch (error) {
         if (error instanceof AuthError && error.status === 401) {
           return {
@@ -55,12 +67,21 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/refresh",
-    implement(refreshContract, async ({ json }) => {
+    implement(refreshContract, async ({ c }) => {
+      const refreshToken = readRefreshCookie(c);
+      if (!refreshToken) {
+        return {
+          status: 401 as const,
+          body: { error: "Missing refresh token", code: "INVALID_REFRESH" },
+        };
+      }
       try {
-        const tokens = await authService.refresh(json.refreshToken);
-        return { status: 200 as const, body: tokens };
+        const session = await authService.refresh(refreshToken);
+        setRefreshCookie(c, session.refreshToken);
+        return { status: 200 as const, body: toSessionBody(session) };
       } catch (error) {
         if (error instanceof AuthError && error.status === 401) {
+          clearRefreshCookie(c);
           return {
             status: 401 as const,
             body: { error: error.message, code: error.code },
@@ -72,8 +93,12 @@ export const authRoutes = new Hono()
   )
   .post(
     "/auth/logout",
-    implement(logoutContract, async ({ json }) => {
-      await authService.logout(json.refreshToken);
+    implement(logoutContract, async ({ c }) => {
+      const refreshToken = readRefreshCookie(c);
+      if (refreshToken) {
+        await authService.logout(refreshToken);
+      }
+      clearRefreshCookie(c);
       return { status: 200 as const, body: { ok: true as const } };
     }),
   )

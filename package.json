@@ -17,7 +17,6 @@
     "start": "bun run src/server/index.ts"
   },
   "dependencies": {
-    "@hono/zod-validator": "^0.7.6",
     "drizzle-orm": "^0.44.7",
     "hono": "^4.10.6",
     "jose": "^6.1.0",
@@ -35,7 +34,9 @@
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.6",
     "eslint": "^9.39.1",
+    "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-boundaries": "^5.2.0",
+    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^16.5.0",
     "typescript": "^5.9.3",

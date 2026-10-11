@@ -52,10 +52,18 @@ For every HTTP endpoint:
 3. Implement the handler in `*.routes.ts` with `implement(contract, handler)`.
 4. Handler returns `{ status, body }` only for statuses listed in the contract.
 5. Do **not** call raw `c.json()` for contract responses — `implement` validates against the contract.
+6. Declare every runtime status in `responses` (include `400` when there is request input, and `500` for response-validation failures).
 
 Helper: [src/server/lib/contract.ts](./src/server/lib/contract.ts)
 
 Human/reviewer owns `contract/`. Agent fills in service + `implement(...)` to satisfy it.
+
+### Auth session rules
+
+- Access JWT: client memory only (never `localStorage`).
+- Refresh token: `HttpOnly` cookie (`Path=/api/auth`), not in JSON.
+- Refresh rotation must be a single DB transaction.
+- Cross-module imports: only via the target module’s `index.ts` (enforced by ESLint `boundaries/entry-point`).
 
 ## Layout
 

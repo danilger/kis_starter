@@ -85,7 +85,8 @@ src/
 - `RouteContract` — тип контракта (request + map ответов).
 - `implement(contract, handler)` — валидирует request по `input`, response по `responses[status]`.
 - Handler возвращает только `{ status, body }` из объявленной карты.
-- Битый response → generic `500` (`RESPONSE_VALIDATION`), без утечки payload.
+- В `responses` нужно явно перечислять `400`/`500`, если runtime их может вернуть.
+- Битый response → `500` (`RESPONSE_VALIDATION`) по схеме контракта, без утечки payload.
 
 Папки контрактов модулей:
 
@@ -137,8 +138,10 @@ src/
 | [contract/schema.ts](src/server/modules/auth/contract/schema.ts) | Zod-схемы тел и сущностей |
 | [contract/endpoints.ts](src/server/modules/auth/contract/endpoints.ts) | Явные контракты endpoint’ов |
 | [auth.table.ts](src/server/modules/auth/auth.table.ts) | Таблицы `users`, `refresh_tokens` |
-| [auth.service.ts](src/server/modules/auth/auth.service.ts) | Бизнес-логика: register/login/refresh/logout/me |
-| [auth.routes.ts](src/server/modules/auth/auth.routes.ts) | `implement(contract, …)` + вызов service |
+| [auth.cookies.ts](src/server/modules/auth/auth.cookies.ts) | HttpOnly refresh cookie helpers |
+| [auth.csrf.ts](src/server/modules/auth/auth.csrf.ts) | Origin/Referer allowlist для mutating auth |
+| [auth.service.ts](src/server/modules/auth/auth.service.ts) | Бизнес-логика + атомарная refresh rotation |
+| [auth.routes.ts](src/server/modules/auth/auth.routes.ts) | `implement(contract, …)` + Set-Cookie |
 
 Эндпоинты:
 
@@ -146,19 +149,20 @@ src/
 |--------|------|----------------|
 | POST | `/api/auth/register` | [auth.routes.ts](src/server/modules/auth/auth.routes.ts) |
 | POST | `/api/auth/login` | то же |
-| POST | `/api/auth/refresh` | то же |
-| POST | `/api/auth/logout` | то же |
+| POST | `/api/auth/refresh` | то же (cookie in/out) |
+| POST | `/api/auth/logout` | то же (cookie) |
 | GET | `/api/auth/me` | то же (Bearer access token) |
 
-Поток register → tokens:
+Поток register → session:
 
 ```text
-routes (zod request)
+routes (implement + contract input)
   → service.register
       → hash password
-      → insert user
-      → issue access JWT + store hashed refresh
-  → jsonResponse(tokenPairSchema)
+      → insert user (unique → 409)
+      → issue access JWT + store sha256(refresh)
+  → Set-Cookie: refresh_token (HttpOnly)
+  → JSON { accessToken, user }  // без refresh
 ```
 
 ---
@@ -191,7 +195,7 @@ Pages тонкие: UI-состояние форм и вызовы — в `featu
 |------|------|
 | [AuthProvider.tsx](src/client/features/auth/AuthProvider.tsx) | Контекст: login/register/logout/refresh/me |
 | [AuthForm.tsx](src/client/features/auth/AuthForm.tsx) | Общая форма email/password |
-| [session.ts](src/client/features/auth/session.ts) | Хранение access/refresh в memory + `localStorage` |
+| [session.ts](src/client/features/auth/session.ts) | Access JWT только в memory (без localStorage) |
 
 ### 5.4. Typed API client
 
@@ -201,11 +205,14 @@ Pages тонкие: UI-состояние форм и вызовы — в `featu
 import { hc } from "hono/client";
 import type { AppType } from "../../../server/app";
 
-export const api = hc<AppType>("/");
+export const api = hc<AppType>("/", {
+  init: { credentials: "include" },
+});
 ```
 
-- Только `import type` с сервера — runtime server-код в бандл не попадает.
-- Вызовы вида `api.api.auth.login.$post({ json: ... })` типизированы от серверных роутов.
+- Только `import type` `AppType` с сервера — runtime server-код в бандл не попадает.
+- `credentials: "include"` нужен для HttpOnly refresh cookie.
+- Тип пользователя на клиенте: `InferResponseType<typeof api.api.auth.me.$get, 200>`.
 
 Правила слоёв (pages → features/shared; features ↛ pages; client ↛ server runtime) закреплены в [eslint.config.js](eslint.config.js).
 
@@ -216,12 +223,13 @@ export const api = hc<AppType>("/");
 ```text
 Browser  LoginPage
    → AuthForm / AuthProvider.login
-   → api.api.auth.login.$post
+   → api.api.auth.login.$post (credentials include)
    → Vite proxy /api → Bun :8787
-   → auth.routes (zValidator)
+   → CSRF Origin check
+   → implement(loginContract)
    → auth.service.login
-   → jsonResponse(tokenPairSchema)
-   → setSession + setUser
+   → Set-Cookie refresh + JSON { accessToken, user }
+   → setAccessToken (memory) + setUser
    → navigate HomePage
 ```
 
@@ -251,10 +259,12 @@ Browser  LoginPage
 | Файл | Что покрывает |
 |------|----------------|
 | [tests/setup.ts](tests/setup.ts) | Env для тестовой БД / JWT |
-| [tests/auth.service.test.ts](tests/auth.service.test.ts) | register/login, duplicate email, bad password |
-| [tests/auth.contract.test.ts](tests/auth.contract.test.ts) | 400 на bad body, полный auth flow, broken response → 500 |
+| [tests/auth.service.test.ts](tests/auth.service.test.ts) | register/login, rotation, duplicate email |
+| [tests/auth.contract.test.ts](tests/auth.contract.test.ts) | CSRF, cookie session flow, validation |
+| [tests/contract.implement.test.ts](tests/contract.implement.test.ts) | Негативные кейсы `implement()` |
+| [tests/architecture/eslint-boundaries.test.ts](tests/architecture/eslint-boundaries.test.ts) | Deep import forbidden / index allowed |
 
-Важный контрактный кейс: намеренно битый response **не** уходит клиенту как успешный JSON — см. тест `invalid response shape never returns as success payload` в [auth.contract.test.ts](tests/auth.contract.test.ts).
+Битый response не уходит как success — см. [contract.implement.test.ts](tests/contract.implement.test.ts).
 
 ---
 

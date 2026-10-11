@@ -6,14 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { InferResponseType } from "hono/client";
 import { api } from "../../shared/api/client";
-import { clearSession, getAccessToken, getRefreshToken, setSession } from "./session";
+import { clearSession, getAccessToken, setAccessToken } from "./session";
 
-type User = {
-  id: string;
-  email: string;
-  createdAt: string;
-};
+type User = InferResponseType<typeof api.api.auth.me.$get, 200>;
 
 type AuthContextValue = {
   user: User | null;
@@ -62,6 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void (async () => {
       try {
+        const refreshRes = await api.api.auth.refresh.$post();
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          if ("accessToken" in data) {
+            setAccessToken(data.accessToken);
+            setUser(data.user);
+            return;
+          }
+        }
         await loadMe();
       } finally {
         setLoading(false);
@@ -75,7 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(await readError(res));
     }
     const data = await res.json();
-    setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    if (!("accessToken" in data)) {
+      throw new Error("Unexpected login response");
+    }
+    setAccessToken(data.accessToken);
     setUser(data.user);
   }, []);
 
@@ -85,32 +94,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(await readError(res));
     }
     const data = await res.json();
-    setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    if (!("accessToken" in data)) {
+      throw new Error("Unexpected register response");
+    }
+    setAccessToken(data.accessToken);
     setUser(data.user);
   }, []);
 
   const logout = useCallback(async () => {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      await api.api.auth.logout.$post({ json: { refreshToken } });
-    }
+    await api.api.auth.logout.$post();
     clearSession();
     setUser(null);
   }, []);
 
   const refresh = useCallback(async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      throw new Error("No refresh token");
-    }
-    const res = await api.api.auth.refresh.$post({ json: { refreshToken } });
+    const res = await api.api.auth.refresh.$post();
     if (!res.ok) {
       clearSession();
       setUser(null);
       throw new Error(await readError(res));
     }
     const data = await res.json();
-    setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    if (!("accessToken" in data)) {
+      clearSession();
+      setUser(null);
+      throw new Error("Unexpected refresh response");
+    }
+    setAccessToken(data.accessToken);
     setUser(data.user);
   }, []);
 

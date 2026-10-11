@@ -10,23 +10,15 @@ export const loginBodySchema = z.object({
   password: z.string().min(1).max(128),
 });
 
-export const refreshBodySchema = z.object({
-  refreshToken: z.string().min(1),
-});
-
-export const logoutBodySchema = z.object({
-  refreshToken: z.string().min(1),
-});
-
 export const userResponseSchema = z.object({
   id: z.string(),
   email: z.email(),
   createdAt: z.string().datetime(),
 });
 
-export const tokenPairSchema = z.object({
+/** JSON session payload — refresh token is HttpOnly cookie only. */
+export const authSessionSchema = z.object({
   accessToken: z.string(),
-  refreshToken: z.string(),
   user: userResponseSchema,
 });
 
@@ -36,7 +28,5 @@ export const logoutOkSchema = z.object({
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
-export type RefreshBody = z.infer<typeof refreshBodySchema>;
-export type LogoutBody = z.infer<typeof logoutBodySchema>;
 export type UserResponse = z.infer<typeof userResponseSchema>;
-export type TokenPair = z.infer<typeof tokenPairSchema>;
+export type AuthSession = z.infer<typeof authSessionSchema>;

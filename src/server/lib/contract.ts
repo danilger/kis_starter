@@ -18,6 +18,8 @@ type InputDef = {
 /**
  * Explicit route contract: declare Zod request + response map first,
  * then implement against it with `implement(contract, handler)`.
+ * Declared `responses` must include every status the runtime may return
+ * (typically 400 for validation and 500 for response-validation failures).
  */
 export type RouteContract<
   TInput extends InputDef = InputDef,
@@ -50,10 +52,31 @@ type ContractTypedResponse<TResponses extends Partial<Record<ContentfulStatusCod
     : never;
 }[keyof TResponses];
 
-type ImplementResponse<TResponses extends Partial<Record<ContentfulStatusCode, z.ZodType>>> =
-  | ContractTypedResponse<TResponses>
-  | TypedResponse<ErrorBody, 400, "json">
-  | TypedResponse<ErrorBody, 500, "json">;
+function respondDeclared<TResponses extends Partial<Record<ContentfulStatusCode, z.ZodType>>>(
+  c: Context,
+  contract: RouteContract<InputDef, TResponses>,
+  status: ContentfulStatusCode,
+  body: unknown,
+) {
+  const schema = contract.responses[status];
+  if (!schema) {
+    console.error("Response status not declared in contract", status);
+    const fallback = contract.responses[500];
+    if (fallback) {
+      return jsonResponse(
+        c,
+        fallback,
+        { error: "Internal response validation failed", code: "UNDECLARED_STATUS" },
+        500,
+      );
+    }
+    return c.json(
+      { error: "Internal response validation failed", code: "UNDECLARED_STATUS" } satisfies ErrorBody,
+      500,
+    );
+  }
+  return jsonResponse(c, schema, body as z.infer<typeof schema>, status);
+}
 
 /**
  * Runtime-validated JSON response. On schema mismatch returns a generic 500
@@ -88,33 +111,17 @@ async function parseTarget<T extends z.ZodType>(
   c: Context,
   schema: T,
   read: () => Promise<unknown> | unknown,
-): Promise<{ ok: true; data: z.infer<T> } | { ok: false; response: TypedResponse<ErrorBody, 400, "json"> }> {
+): Promise<{ ok: true; data: z.infer<T> } | { ok: false }> {
   let raw: unknown;
   try {
     raw = await read();
   } catch {
-    return {
-      ok: false,
-      response: jsonResponse(
-        c,
-        errorBodySchema,
-        { error: "Invalid request", code: "VALIDATION_ERROR" },
-        400,
-      ) as TypedResponse<ErrorBody, 400, "json">,
-    };
+    return { ok: false };
   }
 
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
-    return {
-      ok: false,
-      response: jsonResponse(
-        c,
-        errorBodySchema,
-        { error: "Invalid request", code: "VALIDATION_ERROR" },
-        400,
-      ) as TypedResponse<ErrorBody, 400, "json">,
-    };
+    return { ok: false };
   }
 
   return { ok: true, data: parsed.data as z.infer<T> };
@@ -132,7 +139,7 @@ export function implement<
   handler: (
     input: HandlerInput<TInput>,
   ) => HandlerResult<TResponses> | Promise<HandlerResult<TResponses>>,
-): (c: Context) => Promise<ImplementResponse<TResponses>> {
+): (c: Context) => Promise<ContractTypedResponse<TResponses>> {
   return async (c) => {
     let json = undefined as HandlerInput<TInput>["json"];
     let query = undefined as HandlerInput<TInput>["query"];
@@ -141,7 +148,10 @@ export function implement<
     if (contract.input?.json) {
       const parsed = await parseTarget(c, contract.input.json, () => c.req.json());
       if (!parsed.ok) {
-        return parsed.response;
+        return respondDeclared(c, contract, 400, {
+          error: "Invalid request",
+          code: "VALIDATION_ERROR",
+        }) as unknown as ContractTypedResponse<TResponses>;
       }
       json = parsed.data as HandlerInput<TInput>["json"];
     }
@@ -149,7 +159,10 @@ export function implement<
     if (contract.input?.query) {
       const parsed = await parseTarget(c, contract.input.query, () => c.req.query());
       if (!parsed.ok) {
-        return parsed.response;
+        return respondDeclared(c, contract, 400, {
+          error: "Invalid request",
+          code: "VALIDATION_ERROR",
+        }) as unknown as ContractTypedResponse<TResponses>;
       }
       query = parsed.data as HandlerInput<TInput>["query"];
     }
@@ -157,7 +170,10 @@ export function implement<
     if (contract.input?.param) {
       const parsed = await parseTarget(c, contract.input.param, () => c.req.param());
       if (!parsed.ok) {
-        return parsed.response;
+        return respondDeclared(c, contract, 400, {
+          error: "Invalid request",
+          code: "VALIDATION_ERROR",
+        }) as unknown as ContractTypedResponse<TResponses>;
       }
       param = parsed.data as HandlerInput<TInput>["param"];
     }
@@ -167,15 +183,24 @@ export function implement<
     const schema = contract.responses[status];
 
     if (!schema) {
-      console.error("Response status not declared in contract", status);
-      return jsonResponse(
-        c,
-        errorBodySchema,
-        { error: "Internal response validation failed", code: "UNDECLARED_STATUS" },
-        500,
-      );
+      return respondDeclared(c, contract, 500, {
+        error: "Internal response validation failed",
+        code: "UNDECLARED_STATUS",
+      }) as unknown as ContractTypedResponse<TResponses>;
     }
 
-    return jsonResponse(c, schema, result.body, status) as unknown as ContractTypedResponse<TResponses>;
+    const parsed = schema.safeParse(result.body);
+    if (!parsed.success) {
+      console.error("Response validation failed", parsed.error.flatten());
+      return respondDeclared(c, contract, 500, {
+        error: "Internal response validation failed",
+        code: "RESPONSE_VALIDATION",
+      }) as unknown as ContractTypedResponse<TResponses>;
+    }
+
+    return c.json(
+      parsed.data,
+      status,
+    ) as unknown as ContractTypedResponse<TResponses>;
   };
 }

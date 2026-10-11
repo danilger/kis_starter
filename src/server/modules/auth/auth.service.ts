@@ -4,7 +4,7 @@ import { db } from "../../db";
 import { refreshTokens, users } from "./auth.table";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { createRefreshToken, signAccessToken, verifyAccessToken } from "../../lib/tokens";
-import type { LoginBody, RegisterBody, TokenPair, UserResponse } from "./contract/schema";
+import type { AuthSession, LoginBody, RegisterBody, UserResponse } from "./contract/schema";
 
 export class AuthError extends Error {
   constructor(
@@ -16,6 +16,11 @@ export class AuthError extends Error {
     this.name = "AuthError";
   }
 }
+
+/** Internal session including refresh plaintext for Set-Cookie only. */
+export type IssuedSession = AuthSession & {
+  refreshToken: string;
+};
 
 function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -29,15 +34,22 @@ function toUserResponse(row: { id: string; email: string; createdAt: Date }): Us
   };
 }
 
-async function issueTokenPair(user: {
-  id: string;
-  email: string;
-  createdAt: Date;
-}): Promise<TokenPair> {
+function isUniqueViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("unique") || message.includes("constraint failed");
+}
+
+async function issueSession(
+  user: { id: string; email: string; createdAt: Date },
+  tx: typeof db = db,
+): Promise<IssuedSession> {
   const accessToken = await signAccessToken({ sub: user.id, email: user.email });
   const refresh = createRefreshToken();
 
-  await db.insert(refreshTokens).values({
+  await tx.insert(refreshTokens).values({
     id: randomUUID(),
     userId: user.id,
     tokenHash: hashRefreshToken(refresh.token),
@@ -52,7 +64,7 @@ async function issueTokenPair(user: {
   };
 }
 
-export async function register(input: RegisterBody): Promise<TokenPair> {
+export async function register(input: RegisterBody): Promise<IssuedSession> {
   const existing = await db.query.users.findFirst({
     where: eq(users.email, input.email.toLowerCase()),
   });
@@ -68,11 +80,19 @@ export async function register(input: RegisterBody): Promise<TokenPair> {
     createdAt: now,
   };
 
-  await db.insert(users).values(user);
-  return issueTokenPair(user);
+  try {
+    await db.insert(users).values(user);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new AuthError("Email already registered", "EMAIL_TAKEN", 409);
+    }
+    throw error;
+  }
+
+  return issueSession(user);
 }
 
-export async function login(input: LoginBody): Promise<TokenPair> {
+export async function login(input: LoginBody): Promise<IssuedSession> {
   const user = await db.query.users.findFirst({
     where: eq(users.email, input.email.toLowerCase()),
   });
@@ -85,29 +105,39 @@ export async function login(input: LoginBody): Promise<TokenPair> {
     throw new AuthError("Invalid email or password", "INVALID_CREDENTIALS", 401);
   }
 
-  return issueTokenPair(user);
+  return issueSession(user);
 }
 
-export async function refresh(refreshToken: string): Promise<TokenPair> {
+export async function refresh(refreshToken: string): Promise<IssuedSession> {
   const tokenHash = hashRefreshToken(refreshToken);
   const now = new Date();
 
-  const stored = await db.query.refreshTokens.findFirst({
-    where: and(eq(refreshTokens.tokenHash, tokenHash), gt(refreshTokens.expiresAt, now)),
-  });
-  if (!stored) {
-    throw new AuthError("Invalid or expired refresh token", "INVALID_REFRESH", 401);
-  }
+  return db.transaction(async (tx) => {
+    const stored = await tx.query.refreshTokens.findFirst({
+      where: and(eq(refreshTokens.tokenHash, tokenHash), gt(refreshTokens.expiresAt, now)),
+    });
+    if (!stored) {
+      throw new AuthError("Invalid or expired refresh token", "INVALID_REFRESH", 401);
+    }
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, stored.userId),
-  });
-  if (!user) {
-    throw new AuthError("User not found", "USER_NOT_FOUND", 401);
-  }
+    const deleted = await tx
+      .delete(refreshTokens)
+      .where(eq(refreshTokens.id, stored.id))
+      .returning({ id: refreshTokens.id });
 
-  await db.delete(refreshTokens).where(eq(refreshTokens.id, stored.id));
-  return issueTokenPair(user);
+    if (deleted.length === 0) {
+      throw new AuthError("Invalid or expired refresh token", "INVALID_REFRESH", 401);
+    }
+
+    const user = await tx.query.users.findFirst({
+      where: eq(users.id, stored.userId),
+    });
+    if (!user) {
+      throw new AuthError("User not found", "USER_NOT_FOUND", 401);
+    }
+
+    return issueSession(user, tx as unknown as typeof db);
+  });
 }
 
 export async function logout(refreshToken: string): Promise<void> {
